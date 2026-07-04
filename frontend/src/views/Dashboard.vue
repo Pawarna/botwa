@@ -72,6 +72,26 @@
             <BellIcon :size="18" />
           </button>
           
+          <!-- Session Status Indicator -->
+          <div style="display: flex; align-items: center; gap: 8px; background: white; padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border);">
+            <div 
+              style="width: 8px; height: 8px; border-radius: 50%;" 
+              :style="{ background: getSessionColor(selectedNavSessionStatus) }"
+            ></div>
+            <select 
+              v-model="selectedNavSession" 
+              style="border: none; background: transparent; outline: none; font-size: 12px; font-weight: 600; color: var(--text-main); max-width: 100px; cursor: pointer;"
+            >
+              <option value="" disabled v-if="navSessions.length === 0">No Session</option>
+              <option v-for="s in navSessions" :key="s.id" :value="s.id">
+                {{ s.id }}
+              </option>
+            </select>
+            <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">
+              {{ selectedNavSessionStatus }}
+            </span>
+          </div>
+          
           <!-- User Profile Dummy -->
           <div style="display: flex; align-items: center; gap: 10px; background: white; padding: 6px 12px 6px 6px; border-radius: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.02); border: 1px solid var(--border);">
             <div style="width: 28px; height: 28px; border-radius: 14px; background: #FF5C35; color: white; display: flex; justify-content: center; align-items: center; font-size: 12px; font-weight: 700;">A</div>
@@ -106,6 +126,7 @@ import {
   LogOutIcon,
   BellIcon
 } from '@lucide/vue';
+import { fetchApi } from '../services/api';
 
 const router = useRouter();
 
@@ -121,6 +142,45 @@ const logout = () => {
   localStorage.removeItem('adminToken');
   router.push('/login');
 };
+
+// --- Navbar Session Indicator Logic ---
+const navSessions = ref<{id: string, status: string}[]>([]);
+const selectedNavSession = ref('');
+let dashboardPoll: number | null = null;
+
+const fetchNavSessions = async () => {
+  try {
+    const data = await fetchApi('/sessions');
+    navSessions.value = data;
+    
+    // Auto select first if none selected
+    if (!selectedNavSession.value && data.length > 0) {
+      selectedNavSession.value = data[0].id;
+    }
+  } catch {}
+};
+
+const selectedNavSessionStatus = computed(() => {
+  const session = navSessions.value.find(s => s.id === selectedNavSession.value);
+  return session ? session.status : 'offline';
+});
+
+const getSessionColor = (status: string) => {
+  if (status === 'connected') return '#34C759'; // green
+  if (status === 'qr' || status === 'connecting') return '#FF9500'; // orange
+  return '#FF3B30'; // red
+};
+
+import { onMounted, onUnmounted, computed } from 'vue';
+
+onMounted(() => {
+  fetchNavSessions();
+  dashboardPoll = window.setInterval(fetchNavSessions, 5000);
+});
+
+onUnmounted(() => {
+  if (dashboardPoll) clearInterval(dashboardPoll);
+});
 </script>
 
 <style scoped>

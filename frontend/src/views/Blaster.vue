@@ -32,17 +32,16 @@
         </div>
         <div class="field-group mb-5">
           <div class="input-wrapper">
-            <input
-              type="text"
+            <select
               class="field-input with-icon"
               v-model="form.sessionId"
-              list="session-list"
-              placeholder="Session ID (e.g. default)"
               @change="fetchQueueJobs"
-            />
-            <datalist id="session-list">
-              <option v-for="s in savedSessions" :key="s" :value="s"></option>
-            </datalist>
+            >
+              <option value="" disabled>— Select Session —</option>
+              <option v-for="s in savedSessions" :key="s.id" :value="s.id">
+                {{ s.id }} ({{ s.status }})
+              </option>
+            </select>
           </div>
         </div>
 
@@ -255,9 +254,9 @@ const confirm = useConfirm();
 
 const mode = ref<'bulk' | 'single'>('bulk');
 
-const savedSessions = ref<string[]>([]);
+const savedSessions = ref<{id: string, status: string}[]>([]);
 const isQueueing = ref(false);
-const form = ref({ sessionId: 'default', messageTemplate: '', mediaUrl: '', mediaType: '' });
+const form = ref({ sessionId: '', messageTemplate: '', mediaUrl: '', mediaType: '' });
 
 const batches = ref<any[]>([]);
 const selectedBatchId = ref('');
@@ -306,7 +305,7 @@ const statusClass = (s: string) => ({
 const fetchSessions = async () => {
   try {
     const data = await fetchApi('/sessions');
-    savedSessions.value = data.map((s: any) => s.id);
+    savedSessions.value = data;
   } catch {}
 };
 

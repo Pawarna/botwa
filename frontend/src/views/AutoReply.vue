@@ -20,10 +20,10 @@
         <form @submit.prevent="addRule">
           <div class="form-group mb-4">
             <label class="form-label">Session ID</label>
-            <input type="text" class="field-input" v-model="form.sessionId" list="session-list" required />
-            <datalist id="session-list">
-              <option v-for="s in savedSessions" :key="s" :value="s"></option>
-            </datalist>
+            <select class="field-input" v-model="form.sessionId" required>
+              <option value="" disabled>— Select Session —</option>
+              <option v-for="s in savedSessions" :key="s.id" :value="s.id">{{ s.id }} ({{ s.status }})</option>
+            </select>
           </div>
           <div class="form-group mb-4">
             <label class="form-label">Keyword</label>
@@ -55,7 +55,10 @@
             <span class="card-title">Rules List</span>
           </div>
           <div class="d-flex gap-2">
-            <input type="text" class="field-input" v-model="viewSessionId" list="session-list" placeholder="Filter by Session ID" style="width: 180px; padding: 6px 12px; margin-bottom: 0;" />
+            <select class="field-input" v-model="viewSessionId" style="width: 180px; padding: 6px 12px; margin-bottom: 0;">
+              <option value="" disabled>Filter by Session</option>
+              <option v-for="s in savedSessions" :key="s.id" :value="s.id">{{ s.id }}</option>
+            </select>
             <button class="btn-icon" @click="fetchRules" title="Refresh list">
               <RefreshCwIcon :size="14" />
             </button>
@@ -115,12 +118,12 @@ const confirm = useConfirm();
 
 const viewSessionId = ref('default');
 const rules = ref<any[]>([]);
-const savedSessions = ref<string[]>([]);
+const savedSessions = ref<{id: string, status: string}[]>([]);
 
 const fetchSessions = async () => {
   try {
     const data = await fetchApi('/sessions');
-    savedSessions.value = data.map((s: any) => s.id);
+    savedSessions.value = data;
   } catch (error) {
     console.error('Failed to fetch sessions', error);
   }

@@ -1,5 +1,5 @@
 import { getNextPendingJob, updateJobStatus } from '../repositories/blastQueueRepository';
-import { getSession } from './whatsappService';
+import { getSession, getSessionStatus } from './whatsappService';
 
 
 let isWorkerRunning = false;
@@ -28,8 +28,10 @@ export const startWorker = async () => {
             await updateJobStatus(job.id, 'PROCESSING');
 
             const session = getSession(job.sessionId);
-            if (!session) {
-                await updateJobStatus(job.id, 'FAILED', `Session ${job.sessionId} not connected`);
+            const status = getSessionStatus(job.sessionId);
+            
+            if (!session || status !== 'connected') {
+                await updateJobStatus(job.id, 'FAILED', `Session ${job.sessionId} is not connected (current status: ${status})`);
                 continue; // Move to next job immediately
             }
 

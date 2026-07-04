@@ -11,10 +11,10 @@
         <form @submit.prevent="queueBroadcast">
           <div class="form-group">
             <label class="form-label">Session ID</label>
-            <input type="text" class="form-control" v-model="form.sessionId" list="session-list" required />
-            <datalist id="session-list">
-              <option v-for="s in savedSessions" :key="s" :value="s"></option>
-            </datalist>
+            <select class="form-control" v-model="form.sessionId" required>
+              <option value="" disabled>— Select Session —</option>
+              <option v-for="s in savedSessions" :key="s.id" :value="s.id">{{ s.id }} ({{ s.status }})</option>
+            </select>
           </div>
           
           <div class="form-group">
@@ -43,7 +43,10 @@
         <div class="d-flex justify-between mb-4 align-center">
           <h3>Live Monitoring</h3>
           <div class="d-flex gap-2">
-            <input type="text" class="form-control" v-model="viewSessionId" list="session-list" placeholder="Filter by Session ID" style="width: 200px; padding: 6px 12px; margin-bottom: 0;" />
+            <select class="form-control" v-model="viewSessionId" style="width: 200px; padding: 6px 12px; margin-bottom: 0;">
+              <option value="" disabled>Filter by Session</option>
+              <option v-for="s in savedSessions" :key="s.id" :value="s.id">{{ s.id }}</option>
+            </select>
           </div>
         </div>
 
@@ -85,12 +88,12 @@ import { fetchApi } from '../services/api';
 const viewSessionId = ref('default');
 const rawNumbers = ref('');
 const loading = ref(false);
-const savedSessions = ref<string[]>([]);
+const savedSessions = ref<{id: string, status: string}[]>([]);
 
 const fetchSessions = async () => {
   try {
     const data = await fetchApi('/sessions');
-    savedSessions.value = data.map((s: any) => s.id);
+    savedSessions.value = data;
   } catch (error) {
     console.error('Failed to fetch sessions', error);
   }

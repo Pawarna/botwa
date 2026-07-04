@@ -1,23 +1,16 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
-}
-
-enum BlastStatus {
-  PENDING
-  PROCESSING
-  SENT
-  FAILED
-}
-
 model WhatsAppAuth {
   sessionId String
   key       String
-  value     String   @db.Text
+  value     String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -28,7 +21,7 @@ model AutoReply {
   id        String   @id @default(uuid())
   sessionId String
   keyword   String
-  replyText String   @db.Text
+  replyText String
   isExact   Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -40,11 +33,11 @@ model BlastQueue {
   id          String      @id @default(uuid())
   sessionId   String
   targetJid   String
-  messageText String      @db.Text
-  mediaUrl    String?     @db.Text
+  messageText String
+  mediaUrl    String?
   mediaType   String?
   status      BlastStatus @default(PENDING)
-  error       String?     @db.Text
+  error       String?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
@@ -53,20 +46,27 @@ model BlastQueue {
 }
 
 model ScrapeBatch {
-  id        String   @id @default(uuid())
+  id        String           @id @default(uuid())
   query     String
-  createdAt DateTime @default(now())
+  createdAt DateTime         @default(now())
   contacts  ScrapedContact[]
 }
 
 model ScrapedContact {
-  id        String   @id @default(uuid())
-  batchId   String
-  name      String
-  phone     String
-  address   String?  @db.Text
-  rating    String?
-  batch     ScrapeBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  id      String      @id @default(uuid())
+  batchId String
+  name    String
+  phone   String
+  address String?
+  rating  String?
+  batch   ScrapeBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
 
   @@index([batchId])
+}
+
+enum BlastStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
 }

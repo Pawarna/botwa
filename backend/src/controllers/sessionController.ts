@@ -1,12 +1,17 @@
 import { Request, Response } from 'express';
-import { createSession, deleteSession, getQrCode, getSession, getSessionError, getSessionStatus } from '../services/whatsappService';
+import { createSession, deleteSession, getQrCode, getSession, getSessionError, getSessionStatus, sessionStatuses } from '../services/whatsappService';
 import { getAllSessionIds } from '../repositories/authRepository';
 import QRCode from 'qrcode';
 
 export const listSessions = async (req: Request, res: Response) => {
     try {
-        const sessionIds = await getAllSessionIds();
-        const sessions = sessionIds.map(id => {
+        const dbSessionIds = await getAllSessionIds();
+        const activeSessionIds = Array.from(sessionStatuses.keys());
+        
+        // Combine and remove duplicates
+        const allSessionIds = Array.from(new Set([...dbSessionIds, ...activeSessionIds]));
+
+        const sessions = allSessionIds.map(id => {
             const status = getSessionStatus(id);
             const error = getSessionError(id);
             return { id, status, error };
