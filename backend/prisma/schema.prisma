@@ -1,0 +1,72 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum BlastStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+}
+
+model WhatsAppAuth {
+  sessionId String
+  key       String
+  value     String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([sessionId, key])
+}
+
+model AutoReply {
+  id        String   @id @default(uuid())
+  sessionId String
+  keyword   String
+  replyText String   @db.Text
+  isExact   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sessionId])
+}
+
+model BlastQueue {
+  id          String      @id @default(uuid())
+  sessionId   String
+  targetJid   String
+  messageText String      @db.Text
+  mediaUrl    String?     @db.Text
+  mediaType   String?
+  status      BlastStatus @default(PENDING)
+  error       String?     @db.Text
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([sessionId])
+  @@index([status])
+}
+
+model ScrapeBatch {
+  id        String   @id @default(uuid())
+  query     String
+  createdAt DateTime @default(now())
+  contacts  ScrapedContact[]
+}
+
+model ScrapedContact {
+  id        String   @id @default(uuid())
+  batchId   String
+  name      String
+  phone     String
+  address   String?  @db.Text
+  rating    String?
+  batch     ScrapeBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+}

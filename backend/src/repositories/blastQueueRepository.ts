@@ -1,0 +1,68 @@
+import prisma from '../utils/prisma';
+type BlastStatusType = 'PENDING' | 'PROCESSING' | 'SENT' | 'FAILED';
+
+export const addBlastJobs = async (sessionId: string, jobs: { targetJid: string, messageText: string, mediaUrl?: string, mediaType?: string }[]) => {
+    const data = jobs.map(job => ({
+        sessionId,
+        targetJid: job.targetJid,
+        messageText: job.messageText,
+        mediaUrl: job.mediaUrl,
+        mediaType: job.mediaType,
+        status: 'PENDING' as const
+    }));
+
+    return prisma.blastQueue.createMany({
+        data
+    });
+};
+
+export const getNextPendingJob = async () => {
+    // Find the oldest pending job
+    return prisma.blastQueue.findFirst({
+        where: { status: 'PENDING' },
+        orderBy: { createdAt: 'asc' }
+    });
+};
+
+export const updateJobStatus = async (id: string, status: BlastStatusType, error?: string) => {
+    return prisma.blastQueue.update({
+        where: { id },
+        data: { 
+            status,
+            ...(error ? { error } : {})
+        }
+    });
+};
+
+export const getQueueStats = async (sessionId: string) => {
+    const stats = await prisma.blastQueue.groupBy({
+        by: ['status'],
+        where: { sessionId },
+        _count: {
+            id: true
+        }
+    });
+
+    const result: Record<BlastStatusType | 'total', number> = {
+        'PENDING': 0,
+        'PROCESSING': 0,
+        'SENT': 0,
+        'FAILED': 0,
+        total: 0
+    };
+
+    stats.forEach((stat: any) => {
+        result[stat.status as BlastStatusType] = stat._count.id;
+        result.total += stat._count.id;
+    });
+
+    return result;
+};
+
+export const getQueueJobs = async (sessionId: string) => {
+    return prisma.blastQueue.findMany({
+        where: { sessionId },
+        orderBy: { createdAt: 'desc' },
+        take: 100 // limit to last 100 to prevent huge payloads
+    });
+};
