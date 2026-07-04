@@ -49,21 +49,28 @@ export const startWorker = async () => {
 
             try {
                 if (job.mediaUrl && job.mediaType) {
-                    if (job.mediaType.includes('image')) {
+                    const ext = job.mediaUrl.split('.').pop() || 'file';
+                    const isImage = job.mediaType.includes('image');
+                    const isVideo = job.mediaType.includes('video');
+                    
+                    if (isImage) {
                         await session.sendMessage(formattedJid, { 
                             image: { url: job.mediaUrl }, 
                             caption: job.messageText 
                         });
-                    } else if (job.mediaType.includes('pdf') || job.mediaType.includes('document')) {
+                    } else if (isVideo) {
                         await session.sendMessage(formattedJid, { 
-                            document: { url: job.mediaUrl },
-                            mimetype: job.mediaType,
-                            fileName: 'Document',
+                            video: { url: job.mediaUrl }, 
                             caption: job.messageText 
                         });
                     } else {
-                        // Fallback to text if unknown type (though should not happen if properly filtered)
-                        await session.sendMessage(formattedJid, { text: job.messageText });
+                        // Everything else (PDF, Word, Excel, CSV, ZIP) goes as document
+                        await session.sendMessage(formattedJid, { 
+                            document: { url: job.mediaUrl },
+                            mimetype: job.mediaType,
+                            fileName: `Attachment.${ext}`,
+                            caption: job.messageText 
+                        });
                     }
                 } else {
                     await session.sendMessage(formattedJid, { text: job.messageText });
@@ -75,9 +82,9 @@ export const startWorker = async () => {
                 await updateJobStatus(job.id, 'FAILED', error?.message || 'Unknown error');
             }
 
-            // 20s random delay (e.g. 15s to 25s)
+            // Delay 30-60s between messages to mimic human behavior and avoid WA ban
             console.log('Waiting for random delay before next broadcast...');
-            await randomDelay(15000, 25000);
+            await randomDelay(30000, 60000);
 
         } catch (error) {
             console.error('Error in broadcast queue worker:', error);

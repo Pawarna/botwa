@@ -32,16 +32,7 @@
         </div>
         <div class="field-group mb-5">
           <div class="input-wrapper">
-            <select
-              class="field-input with-icon"
-              v-model="form.sessionId"
-              @change="fetchQueueJobs"
-            >
-              <option value="" disabled>— Select Session —</option>
-              <option v-for="s in savedSessions" :key="s.id" :value="s.id">
-                {{ s.id }} ({{ s.status }})
-              </option>
-            </select>
+            <input type="text" class="field-input" value="Primary Session (Auto)" disabled />
           </div>
         </div>
 
@@ -146,7 +137,7 @@
           Attachment <span class="optional-tag">optional</span>
         </div>
         <div class="field-group mb-6">
-          <input type="file" class="field-input" @change="handleFileSelect" accept="image/*,.pdf" />
+          <input type="file" class="field-input" @change="handleFileSelect" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" />
         </div>
 
         <button @click="queueBroadcast" class="btn-send" :disabled="isQueueing">
@@ -226,7 +217,7 @@
               <tr v-if="jobs.length === 0">
                 <td colspan="5" class="empty-row">
                   <LayoutListIcon :size="20" />
-                  No jobs yet. Enter a Session ID to load.
+                  No jobs yet.
                 </td>
               </tr>
             </tbody>
@@ -256,7 +247,7 @@ const mode = ref<'bulk' | 'single'>('bulk');
 
 const savedSessions = ref<{id: string, status: string}[]>([]);
 const isQueueing = ref(false);
-const form = ref({ sessionId: '', messageTemplate: '', mediaUrl: '', mediaType: '' });
+const form = ref({ sessionId: '', messageTemplate: '', mediaUrl: '', mediaType: '', mediaName: '' });
 
 const batches = ref<any[]>([]);
 const selectedBatchId = ref('');
@@ -327,9 +318,7 @@ const deleteJob = async (jobId: string) => {
           method: 'DELETE'
         });
         jobs.value = jobs.value.filter(j => j.id !== jobId);
-        if (form.value.sessionId) {
-          stats.value = await fetchApi(`/broadcast/${form.value.sessionId}/stats`);
-        }
+        stats.value = await fetchApi(`/broadcast/default/stats`);
         toast.success('Job deleted from queue history.');
       } catch (error: any) {
         toast.error('Failed to delete job: ' + error.message);
@@ -339,7 +328,6 @@ const deleteJob = async (jobId: string) => {
 };
 
 const clearQueue = async () => {
-  if (!form.value.sessionId) return;
   confirm.show({
     title: 'Clear Queue History',
     message: 'Are you sure you want to clear the entire queue history for this session?',
@@ -347,7 +335,7 @@ const clearQueue = async () => {
     type: 'danger',
     onConfirm: async () => {
       try {
-        await fetchApi(`/broadcast/${form.value.sessionId}/clear`, {
+        await fetchApi(`/broadcast/default/clear`, {
           method: 'DELETE'
         });
         jobs.value = [];
@@ -397,10 +385,9 @@ const loadBatchContacts = async () => {
 };
 
 const fetchQueueJobs = async () => {
-  if (!form.value.sessionId) return;
   try {
-    stats.value = await fetchApi(`/broadcast/${form.value.sessionId}/stats`);
-    jobs.value = await fetchApi(`/broadcast/${form.value.sessionId}/jobs`);
+    stats.value = await fetchApi(`/broadcast/default/stats`);
+    jobs.value = await fetchApi(`/broadcast/default/jobs`);
   } catch {}
 };
 
@@ -432,11 +419,19 @@ const handleFileSelect = async (event: Event) => {
   const formData = new FormData();
   formData.append('file', file);
   try {
-    const response = await fetch(`${import.meta.env.VITE_API_URL}/upload`, { method: 'POST', body: formData });
+    const token = localStorage.getItem('adminToken');
+    const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/upload`, { 
+      method: 'POST',
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: formData 
+    });
     const data = await response.json();
     if (response.ok) { 
-      form.value.mediaUrl = data.url; 
-      form.value.mediaType = file.type; 
+      form.value.mediaUrl = data.mediaUrl; 
+      form.value.mediaType = data.mediaType;
+      form.value.mediaName = data.fileName || file.name;
       toast.success('Media file uploaded successfully.');
     }
     else throw new Error(data.error);
@@ -463,11 +458,11 @@ const queueBroadcast = async () => {
           .replace(/\{\{phone\}\}/g, c.phone || '')
           .replace(/\{\{address\}\}/g, c.address || '')
           .replace(/\{\{rating\}\}/g, c.rating || '');
-        return { targetJid: c.phone, messageText: text, mediaUrl: form.value.mediaUrl || undefined, mediaType: form.value.mediaType || undefined };
+        return { targetJid: c.phone, messageText: text, mediaUrl: form.value.mediaUrl || undefined, mediaType: form.value.mediaType || undefined, mediaName: form.value.mediaName || undefined };
       });
     } else {
       if (!singlePhone.value) throw new Error('Please enter a phone number');
-      payloadJobs = [{ targetJid: singlePhone.value, messageText: form.value.messageTemplate, mediaUrl: form.value.mediaUrl || undefined, mediaType: form.value.mediaType || undefined }];
+      payloadJobs = [{ targetJid: singlePhone.value, messageText: form.value.messageTemplate, mediaUrl: form.value.mediaUrl || undefined, mediaType: form.value.mediaType || undefined, mediaName: form.value.mediaName || undefined }];
     }
 
     await fetchApi('/broadcast', {
@@ -659,4 +654,20 @@ const queueBroadcast = async () => {
 .gap-2 { gap: 8px; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+@media (max-width: 992px) {
+  .compose-panel {
+    width: 100%;
+  }
+}
+
+@media (max-width: 576px) {
+  .stat-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .c-address {
+    display: none !important;
+  }
+}
 </style>

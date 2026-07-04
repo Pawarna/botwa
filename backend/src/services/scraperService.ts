@@ -151,19 +151,27 @@ async function extractFromCards(page: any, limit: number) {
       const ratingEl = card.querySelector('.MW4etd');
       const linkEl = card.querySelector('a[href*="/maps/place"]');
       
-      // Fix: Improved Address Extraction Logic
-      const allW4Efsd = card.querySelectorAll('.W4Efsd');
+      // Fix: Improved Address Extraction Logic (Avoids Schedule & Features)
       let finalAddress = 'N/A';
-      // Usually, the second W4Efsd block contains the category/address details
-      if (allW4Efsd.length > 1) {
-        const addrBlock = allW4Efsd[allW4Efsd.length - 1];
-        const spans = addrBlock.querySelectorAll('span');
-        // Find the last span that isn't a classification or symbol
-        for (let i = spans.length - 1; i >= 0; i--) {
-          const text = spans[i].innerText.trim();
-          if (text && text !== '·' && !text.includes('★') && isNaN(parseInt(text)) && text.length > 3) {
-            finalAddress = text;
-            break;
+      const w4Elements = Array.from(card.querySelectorAll('.W4Efsd'));
+      
+      for (const el of w4Elements) {
+        // Skip parent containers
+        if (el.querySelector('.W4Efsd')) continue;
+        
+        const text = (el as HTMLElement).innerText || '';
+        
+        // Skip lines containing hours or typical features
+        if (text.match(/(Buka|Tutup|Open|Closed|24 jam|AM|PM|Dine-in|Takeaway|Delivery|Bawa pulang|Makan di tempat)/i)) continue;
+        
+        if (text.includes('·')) {
+          const parts = text.split('·');
+          // Take everything after the first bullet (e.g. "Category · Address")
+          const possibleAddress = parts.slice(1).join('·').trim();
+          
+          if (possibleAddress.length > 3 && !possibleAddress.includes('★') && !possibleAddress.match(/^\$+$/)) {
+            finalAddress = possibleAddress;
+            break; // Stop after finding the first valid address
           }
         }
       }
@@ -211,11 +219,34 @@ async function fetchPhones(browser: any, records: any[]) {
           await tab.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
           await tab.goto(record.url, { waitUntil: 'domcontentloaded', timeout: 15_000 });
 
-          // Wait specifically for phone element instead of sleeping blindly
-          const phone = await tab
+          let phone = await tab
             .waitForSelector(CONFIG.SELECTORS.DETAIL_PHONE, { timeout: CONFIG.DELAYS.DETAIL_LOAD })
             .then((el: any) => el.evaluate((e: any) => e.innerText.trim()))
             .catch(() => 'N/A');
+
+          // Clean up phone format
+          if (phone !== 'N/A') {
+            // Remove all non-numeric characters except +
+            let cleanPhone = phone.replace(/[^\d+]/g, '');
+            
+            // Standardize Indonesian local numbers to +62 format
+            if (cleanPhone.startsWith('08')) {
+              cleanPhone = '+628' + cleanPhone.slice(2);
+            } else if (cleanPhone.startsWith('02') || cleanPhone.startsWith('03') || cleanPhone.startsWith('04') || cleanPhone.startsWith('05') || cleanPhone.startsWith('06') || cleanPhone.startsWith('07') || cleanPhone.startsWith('09')) {
+              // Convert other local codes to international, though landlines usually don't have WA
+              cleanPhone = '+62' + cleanPhone.slice(1);
+            }
+            
+            // Finalize: remove the '+' so it's ready for Baileys (e.g. 628...)
+            cleanPhone = cleanPhone.replace('+', '');
+            
+            // Basic validation for reasonable WA number length (Indonesia minimal usually ~10 digits)
+            if (cleanPhone.length >= 9) {
+              phone = cleanPhone;
+            } else {
+              phone = 'N/A';
+            }
+          }
 
           record.phone = phone;
           completed++;

@@ -17,23 +17,13 @@
         <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
           Add a new WhatsApp instance. You will scan a QR code to link your phone.
         </p>
-        <form @submit.prevent="startSession">
-          <div class="form-group mb-5">
-            <label class="form-label">Session ID</label>
-            <input 
-              type="text" 
-              class="field-input" 
-              v-model="newSessionId" 
-              placeholder="e.g. marketing-dept"
-              required
-            />
-          </div>
-          <button type="submit" class="btn-primary-solid" style="width: 100%; justify-content: center;" :disabled="loading">
+        <div style="margin-top: 16px;">
+          <button type="button" @click="startSession" class="btn-primary-solid" style="width: 100%; justify-content: center;" :disabled="loading || (savedSessions.length > 0 && !['offline', 'error'].includes(savedSessions[0].status))">
             <LoaderIcon :size="14" class="spin" v-if="loading" />
             <PlusIcon :size="14" v-else />
-            {{ loading ? 'Starting...' : 'Create Session' }}
+            {{ loading ? 'Starting...' : ((savedSessions.length > 0 && !['offline', 'error'].includes(savedSessions[0].status)) ? 'Session Active' : 'Connect WhatsApp') }}
           </button>
-        </form>
+        </div>
       </div>
 
       <!-- Session List Card -->
@@ -143,7 +133,6 @@ import {
 const toast = useToast();
 const confirm = useConfirm();
 
-const newSessionId = ref('');
 const loading = ref(false);
 const savedSessions = ref<{id: string, status: string, error?: string}[]>([]);
 let pollInterval: number | null = null;
@@ -153,13 +142,13 @@ const activeQrSession = ref('');
 
 const fetchSessions = async () => {
   try {
-    const data = await fetchApi('/sessions');
+    const data = await fetchApi(`/sessions?t=${Date.now()}`);
     savedSessions.value = data;
     
     if (activeQrSession.value) {
       const activeSession = data.find((s: any) => s.id === activeQrSession.value);
       if (activeSession && activeSession.status === 'qr') {
-        const qrData = await fetchApi(`/sessions/${activeQrSession.value}`);
+        const qrData = await fetchApi(`/sessions/${activeQrSession.value}?t=${Date.now()}`);
         if (qrData.qr) activeQr.value = qrData.qr;
       } else if (activeSession && activeSession.status === 'connected') {
         const connectedId = activeQrSession.value;
@@ -183,15 +172,19 @@ const getStatusClass = (status: string) => {
 };
 
 const startSession = async () => {
-  if (!newSessionId.value) return;
+  if (savedSessions.value.length > 0 && !['offline', 'error'].includes(savedSessions.value[0].status)) return;
   loading.value = true;
   try {
     await fetchApi('/sessions', {
       method: 'POST',
-      body: JSON.stringify({ sessionId: newSessionId.value }),
+      body: JSON.stringify({}),
     });
-    activeQrSession.value = newSessionId.value;
-    newSessionId.value = '';
+    
+    // Set activeQrSession so the modal opens and fetchSessions checks for QR
+    if (savedSessions.value.length > 0) {
+      activeQrSession.value = savedSessions.value[0].id;
+    }
+    
     await fetchSessions();
     toast.info('Initializing session... Preparing QR code.');
   } catch (error: any) {
@@ -263,6 +256,12 @@ onUnmounted(() => {
 /* Layout */
 .compose-panel { width: 340px; flex-shrink: 0; }
 .monitor-panel { flex: 1; }
+
+@media (max-width: 992px) {
+  .compose-panel {
+    width: 100%;
+  }
+}
 
 /* Table styles */
 .table-wrapper { overflow: auto; max-height: 480px; }

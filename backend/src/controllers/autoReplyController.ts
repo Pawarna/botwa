@@ -3,7 +3,8 @@ import { createReplyRule, deleteReplyRule, getReplyRules } from '../repositories
 
 export const addReplyRule = async (req: Request, res: Response) => {
     try {
-        const { sessionId, keyword, replyText, isExact } = req.body;
+        const sessionId = (req as any).sessionId;
+        const { keyword, replyText, isExact } = req.body;
         if (!sessionId || !keyword || !replyText) {
             return res.status(400).json({ error: 'Missing required fields' });
         }
@@ -17,7 +18,7 @@ export const addReplyRule = async (req: Request, res: Response) => {
 
 export const listReplyRules = async (req: Request, res: Response) => {
     try {
-        const { sessionId } = req.params;
+        const sessionId = (req as any).sessionId;
         const rules = await getReplyRules(sessionId);
         return res.status(200).json(rules);
     } catch (error: any) {
@@ -27,7 +28,8 @@ export const listReplyRules = async (req: Request, res: Response) => {
 
 export const removeReplyRule = async (req: Request, res: Response) => {
     try {
-        const { sessionId, id } = req.params;
+        const sessionId = (req as any).sessionId;
+        const { id } = req.params;
         await deleteReplyRule(id, sessionId);
         return res.status(200).json({ message: 'Rule deleted' });
     } catch (error: any) {

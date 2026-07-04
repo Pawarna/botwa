@@ -1,33 +1,40 @@
 <template>
   <div class="app-container">
     
+    <!-- Sidebar backdrop for mobile overlay -->
+    <div 
+      class="sidebar-backdrop" 
+      :class="{ visible: isMobileOpen }" 
+      @click="isMobileOpen = false"
+    ></div>
+
     <!-- Collapsible Sidebar -->
-    <aside class="sidebar" :class="{ expanded: isExpanded }">
+    <aside class="sidebar" :class="{ expanded: isExpanded, 'mobile-open': isMobileOpen }">
       
       <!-- Logo area -->
-      <router-link to="/" class="logo-container">
+      <router-link to="/" class="logo-container" @click="isMobileOpen = false">
         <div class="logo-icon">W</div>
         <span class="logo-text">WaBot Pro</span>
       </router-link>
       
       <!-- Nav menu -->
       <nav class="nav-menu">
-        <router-link to="/session" class="nav-item" active-class="active" title="Session Manager">
+        <router-link to="/session" class="nav-item" active-class="active" title="Session Manager" @click="isMobileOpen = false">
           <SmartphoneIcon :size="20" />
           <span class="nav-text">Sessions</span>
         </router-link>
         
-        <router-link to="/auto-reply" class="nav-item" active-class="active" title="Auto Reply Rules">
+        <router-link to="/auto-reply" class="nav-item" active-class="active" title="Auto Reply Rules" @click="isMobileOpen = false">
           <MessageSquareIcon :size="20" />
           <span class="nav-text">Auto Reply</span>
         </router-link>
         
-        <router-link to="/scraper" class="nav-item" active-class="active" title="Maps Scraper">
+        <router-link to="/scraper" class="nav-item" active-class="active" title="Maps Scraper" @click="isMobileOpen = false">
           <SearchIcon :size="20" />
           <span class="nav-text">Scraper</span>
         </router-link>
         
-        <router-link to="/blaster" class="nav-item" active-class="active" title="Advanced Blaster">
+        <router-link to="/blaster" class="nav-item" active-class="active" title="Advanced Blaster" @click="isMobileOpen = false">
           <SendIcon :size="20" />
           <span class="nav-text">Blaster</span>
         </router-link>
@@ -55,13 +62,18 @@
     <!-- Main Content -->
     <main class="main-content">
       
-      <!-- Top Navigation without pills -->
+      <!-- Top Navigation -->
       <div class="top-nav">
         
-        <!-- Welcome text / Page Title -->
-        <div>
-          <h2 style="font-size: 20px; font-weight: 700; color: var(--text-main);">Dashboard</h2>
-          <p style="font-size: 13px; color: var(--text-muted); margin-top: 2px;">Manage your scraping and broadcast operations</p>
+        <!-- Hamburger Menu Button (visible on mobile only) -->
+        <button class="mobile-menu-btn" @click="isMobileOpen = true" title="Open Menu">
+          <MenuIcon :size="20" />
+        </button>
+
+        <!-- Dynamic Page Title & Subtitle -->
+        <div class="page-title-group" style="flex: 1;">
+          <h2 class="top-nav-title" style="font-size: 20px; font-weight: 700; color: var(--text-main);">{{ pageTitle }}</h2>
+          <p class="top-nav-subtitle" style="font-size: 13px; color: var(--text-muted); margin-top: 2px;">{{ pageSubtitle }}</p>
         </div>
 
         <div class="top-actions">
@@ -73,29 +85,23 @@
           </button>
           
           <!-- Session Status Indicator -->
-          <div style="display: flex; align-items: center; gap: 8px; background: white; padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border);">
+          <div class="session-status-pill">
             <div 
-              style="width: 8px; height: 8px; border-radius: 50%;" 
-              :style="{ background: getSessionColor(selectedNavSessionStatus) }"
+              style="width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;" 
+              :style="{ background: getSessionColor(navSessionStatus) }"
             ></div>
-            <select 
-              v-model="selectedNavSession" 
-              style="border: none; background: transparent; outline: none; font-size: 12px; font-weight: 600; color: var(--text-main); max-width: 100px; cursor: pointer;"
-            >
-              <option value="" disabled v-if="navSessions.length === 0">No Session</option>
-              <option v-for="s in navSessions" :key="s.id" :value="s.id">
-                {{ s.id }}
-              </option>
-            </select>
-            <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">
-              {{ selectedNavSessionStatus }}
+            <span class="session-status-label" style="font-size: 12px; font-weight: 600; color: var(--text-main); white-space: nowrap;">
+              Primary Session
+            </span>
+            <span class="session-status-text" style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">
+              {{ navSessionStatus }}
             </span>
           </div>
           
           <!-- User Profile Dummy -->
-          <div style="display: flex; align-items: center; gap: 10px; background: white; padding: 6px 12px 6px 6px; border-radius: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.02); border: 1px solid var(--border);">
-            <div style="width: 28px; height: 28px; border-radius: 14px; background: #FF5C35; color: white; display: flex; justify-content: center; align-items: center; font-size: 12px; font-weight: 700;">A</div>
-            <div style="display: flex; flex-direction: column;">
+          <div class="profile-pill">
+            <div class="profile-avatar">A</div>
+            <div class="profile-info">
               <span style="font-size: 12px; font-weight: 600; color: var(--text-main);">Admin User</span>
               <span style="font-size: 9px; color: var(--text-muted);">admin@wabot.pro</span>
             </div>
@@ -114,8 +120,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import {
   SmartphoneIcon,
   MessageSquareIcon,
@@ -124,11 +130,16 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   LogOutIcon,
-  BellIcon
+  BellIcon,
+  MenuIcon
 } from '@lucide/vue';
 import { fetchApi } from '../services/api';
 
 const router = useRouter();
+const route = useRoute();
+
+// Mobile sidebar open state
+const isMobileOpen = ref(false);
 
 // Retrieve initial state from localStorage if exists
 const isExpanded = ref(localStorage.getItem('sidebar_expanded') === 'true');
@@ -143,26 +154,46 @@ const logout = () => {
   router.push('/login');
 };
 
+// Auto close mobile drawer on route change
+watch(() => route.path, () => {
+  isMobileOpen.value = false;
+});
+
+// Dynamic Title & Subtitle based on active route
+const pageTitle = computed(() => {
+  const name = route.name;
+  if (name === 'Session') return 'Session Manager';
+  if (name === 'AutoReply') return 'Auto Reply Rules';
+  if (name === 'Scraper') return 'Maps Scraper';
+  if (name === 'Blaster') return 'Message Blaster';
+  return 'Dashboard';
+});
+
+const pageSubtitle = computed(() => {
+  const name = route.name;
+  if (name === 'Session') return 'Configure and authenticate WhatsApp instances';
+  if (name === 'AutoReply') return 'Configure automated responses for incoming WhatsApp messages';
+  if (name === 'Scraper') return 'Extract business contacts from Google Maps';
+  if (name === 'Blaster') return 'Send personalized WhatsApp messages at scale';
+  return 'Manage your scraping and broadcast operations';
+});
+
 // --- Navbar Session Indicator Logic ---
 const navSessions = ref<{id: string, status: string}[]>([]);
-const selectedNavSession = ref('');
 let dashboardPoll: number | null = null;
 
 const fetchNavSessions = async () => {
   try {
-    const data = await fetchApi('/sessions');
+    const data = await fetchApi(`/sessions?t=${Date.now()}`);
     navSessions.value = data;
-    
-    // Auto select first if none selected
-    if (!selectedNavSession.value && data.length > 0) {
-      selectedNavSession.value = data[0].id;
-    }
   } catch {}
 };
 
-const selectedNavSessionStatus = computed(() => {
-  const session = navSessions.value.find(s => s.id === selectedNavSession.value);
-  return session ? session.status : 'offline';
+const navSessionStatus = computed(() => {
+  if (navSessions.value.length > 0) {
+    return navSessions.value[0].status;
+  }
+  return 'offline';
 });
 
 const getSessionColor = (status: string) => {
@@ -170,8 +201,6 @@ const getSessionColor = (status: string) => {
   if (status === 'qr' || status === 'connecting') return '#FF9500'; // orange
   return '#FF3B30'; // red
 };
-
-import { onMounted, onUnmounted, computed } from 'vue';
 
 onMounted(() => {
   fetchNavSessions();

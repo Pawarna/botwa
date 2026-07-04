@@ -31,7 +31,8 @@ export const uploadMedia = async (req: Request, res: Response) => {
 
         return res.status(200).json({
             mediaUrl: publicUrlData.publicUrl,
-            mediaType: file.mimetype
+            mediaType: file.mimetype,
+            fileName: file.originalname
         });
     } catch (error: any) {
         return res.status(500).json({ error: error.message });

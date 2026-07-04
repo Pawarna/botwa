@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { login, register } from '../controllers/authController';
+import { requireAuth } from '../middlewares/authMiddleware';
 import { checkSession, startSession, stopSession, listSessions } from '../controllers/sessionController';
 import { addReplyRule, listReplyRules, removeReplyRule } from '../controllers/autoReplyController';
 import { getBroadcastStats, queueBroadcast, getBroadcastJobs, deleteBroadcastJob, clearBroadcastQueue } from '../controllers/broadcastController';
@@ -9,6 +11,13 @@ import multer from 'multer';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
+
+// Public Auth routes
+router.post('/auth/login', login);
+router.post('/auth/register', register);
+
+// Protect all following routes
+router.use(requireAuth);
 
 // Scraper
 router.post('/scrape', startScraping);

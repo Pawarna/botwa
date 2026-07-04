@@ -41,7 +41,11 @@ export const createSession = async (sessionId: string) => {
         auth: state as any,
         printQRInTerminal: false,
         syncFullHistory: false,
-        browser: ['WaBot', 'Chrome', '1.0.0']
+        // Mimic official WhatsApp Web to reduce ban risk
+        browser: ['Ubuntu', 'Chrome', '22.14.5'],
+        // Prevent sending too much traffic at once
+        generateHighQualityLinkPreview: false,
+        getMessage: async () => undefined,
     });
 
     sessions.set(sessionId, sock);
@@ -69,7 +73,10 @@ export const createSession = async (sessionId: string) => {
             sessionStatuses.set(sessionId, 'error');
             
             if (shouldReconnect) {
-                createSession(sessionId);
+                // Reconnect after a short random backoff (3-7s) to avoid hammering WA servers
+                const backoff = Math.floor(Math.random() * 4000 + 3000);
+                console.log(`Reconnecting session ${sessionId} in ${backoff}ms...`);
+                setTimeout(() => createSession(sessionId), backoff);
             } else {
                 sessionStatuses.set(sessionId, 'offline');
                 if (statusCode === DisconnectReason.loggedOut || statusCode === DisconnectReason.badSession) {

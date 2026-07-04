@@ -11,10 +11,7 @@
         <form @submit.prevent="queueBroadcast">
           <div class="form-group">
             <label class="form-label">Session ID</label>
-            <select class="form-control" v-model="form.sessionId" required>
-              <option value="" disabled>— Select Session —</option>
-              <option v-for="s in savedSessions" :key="s.id" :value="s.id">{{ s.id }} ({{ s.status }})</option>
-            </select>
+            <input type="text" class="form-control" value="Primary Session (Auto)" disabled />
           </div>
           
           <div class="form-group">
@@ -42,12 +39,7 @@
       <div class="glass-panel" style="flex: 2;">
         <div class="d-flex justify-between mb-4 align-center">
           <h3>Live Monitoring</h3>
-          <div class="d-flex gap-2">
-            <select class="form-control" v-model="viewSessionId" style="width: 200px; padding: 6px 12px; margin-bottom: 0;">
-              <option value="" disabled>Filter by Session</option>
-              <option v-for="s in savedSessions" :key="s.id" :value="s.id">{{ s.id }}</option>
-            </select>
-          </div>
+
         </div>
 
         <div class="stats-grid mt-4">
@@ -82,10 +74,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { fetchApi } from '../services/api';
 
-const viewSessionId = ref('default');
 const rawNumbers = ref('');
 const loading = ref(false);
 const savedSessions = ref<{id: string, status: string}[]>([]);
@@ -115,9 +106,8 @@ const stats = ref({
 let pollInterval: number | null = null;
 
 const fetchStats = async () => {
-  if (!viewSessionId.value) return;
   try {
-    const data = await fetchApi(`/broadcast/${viewSessionId.value}/stats`);
+    const data = await fetchApi(`/broadcast/default/stats`);
     stats.value = data;
   } catch (error) {
     console.error('Failed to fetch stats:', error);
@@ -191,10 +181,7 @@ const queueBroadcast = async () => {
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     if (fileInput) fileInput.value = '';
     
-    // Immediate fetch
-    if (viewSessionId.value === form.value.sessionId) {
-      fetchStats();
-    }
+    fetchStats();
     
     alert(`Successfully queued ${jobs.length} messages.`);
   } catch (error: any) {
@@ -214,9 +201,7 @@ onUnmounted(() => {
   if (pollInterval) clearInterval(pollInterval);
 });
 
-watch(viewSessionId, () => {
-  fetchStats();
-});
+
 </script>
 
 <style scoped>

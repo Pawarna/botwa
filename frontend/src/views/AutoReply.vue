@@ -18,13 +18,7 @@
           Define a keyword that triggers an automated reply message.
         </p>
         <form @submit.prevent="addRule">
-          <div class="form-group mb-4">
-            <label class="form-label">Session ID</label>
-            <select class="field-input" v-model="form.sessionId" required>
-              <option value="" disabled>— Select Session —</option>
-              <option v-for="s in savedSessions" :key="s.id" :value="s.id">{{ s.id }} ({{ s.status }})</option>
-            </select>
-          </div>
+            <input type="text" class="field-input" value="Primary Session (Auto)" disabled />
           <div class="form-group mb-4">
             <label class="form-label">Keyword</label>
             <input type="text" class="field-input" v-model="form.keyword" required placeholder="e.g. price" />
@@ -55,10 +49,7 @@
             <span class="card-title">Rules List</span>
           </div>
           <div class="d-flex gap-2">
-            <select class="field-input" v-model="viewSessionId" style="width: 180px; padding: 6px 12px; margin-bottom: 0;">
-              <option value="" disabled>Filter by Session</option>
-              <option v-for="s in savedSessions" :key="s.id" :value="s.id">{{ s.id }}</option>
-            </select>
+
             <button class="btn-icon" @click="fetchRules" title="Refresh list">
               <RefreshCwIcon :size="14" />
             </button>
@@ -116,7 +107,6 @@ import { PlusIcon, MessageSquareIcon, RefreshCwIcon, Trash2Icon } from '@lucide/
 const toast = useToast();
 const confirm = useConfirm();
 
-const viewSessionId = ref('default');
 const rules = ref<any[]>([]);
 const savedSessions = ref<{id: string, status: string}[]>([]);
 
@@ -137,9 +127,8 @@ const form = ref({
 });
 
 const fetchRules = async () => {
-  if (!viewSessionId.value) return;
   try {
-    const data = await fetchApi(`/autoreply/${viewSessionId.value}`);
+    const data = await fetchApi(`/autoreply/default`); // backend ignores the param anyway
     rules.value = data;
   } catch (error: any) {
     toast.error(error.message);
@@ -156,7 +145,7 @@ const addRule = async () => {
     form.value.keyword = '';
     form.value.replyText = '';
     
-    if (viewSessionId.value === form.value.sessionId) {
+    if (true) {
       fetchRules();
     }
   } catch (error: any) {
@@ -172,7 +161,7 @@ const deleteRule = async (id: string) => {
     type: 'danger',
     onConfirm: async () => {
       try {
-        await fetchApi(`/autoreply/${viewSessionId.value}/${id}`, {
+        await fetchApi(`/autoreply/default/${id}`, {
           method: 'DELETE'
         });
         toast.success('Auto reply rule deleted.');
@@ -198,6 +187,12 @@ onMounted(() => {
 /* Layout */
 .compose-panel { width: 340px; flex-shrink: 0; }
 .monitor-panel { flex: 1; }
+
+@media (max-width: 992px) {
+  .compose-panel {
+    width: 100%;
+  }
+}
 
 /* Table styles */
 .table-wrapper { overflow: auto; max-height: 480px; }

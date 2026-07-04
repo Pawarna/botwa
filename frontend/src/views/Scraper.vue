@@ -235,7 +235,8 @@ const appendLog = async (data: { type: string; msg: string }) => {
 
 const startSSE = () => {
   const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
-  eventSource = new EventSource(`${apiBase}/scrape/logs`);
+  const token = localStorage.getItem('adminToken') || '';
+  eventSource = new EventSource(`${apiBase}/scrape/logs?token=${token}`);
   eventSource.onmessage = (e) => {
     const data = JSON.parse(e.data);
     appendLog(data);
@@ -335,12 +336,19 @@ const runScraper = async () => {
   logs.value = [];
   startSSE();
   try {
-    await fetchApi('/scrape', {
+    const newBatch = await fetchApi('/scrape', {
       method: 'POST',
       body: JSON.stringify({ query: scrapeQuery.value, limit: scrapeLimit.value })
     });
+    
+    // Automatically load the fresh lists and select the new batch
+    await loadBatches();
+    selectBatch(newBatch);
+    toast.success('Scraping completed!');
+    
   } catch (error: any) {
     appendLog({ type: 'error', msg: error.message });
+  } finally {
     isScraping.value = false;
     closeSSE();
   }
@@ -414,6 +422,32 @@ loadBatches();
 .split-layout { display: flex; gap: 16px; }
 .history-panel { width: 280px; flex-shrink: 0; padding: 16px; }
 .detail-panel { flex: 1; overflow: hidden; }
+
+@media (max-width: 992px) {
+  .split-layout {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .history-panel {
+    width: 100%;
+  }
+}
+
+@media (max-width: 576px) {
+  .scrape-form {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+  .scrape-form > div {
+    width: 100% !important;
+  }
+  .scrape-form button {
+    width: 100%;
+    justify-content: center;
+    padding: 12px 20px;
+  }
+}
 
 /* Batch List */
 .batch-list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; max-height: 480px; }
