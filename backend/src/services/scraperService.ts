@@ -1,33 +1,48 @@
 import puppeteer from 'puppeteer';
 import prisma from '../utils/prisma';
 import { EventEmitter } from 'events';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export const scrapeEmitter = new EventEmitter();
 
+// Rotate user-agents to avoid detection
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+];
+
+const getRandomUA = () => USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+
 const CONFIG = {
   MAX_RESULTS: 30,
-  CONCURRENCY: 6,          // Increased from 3 → 6 parallel phone fetches
+  CONCURRENCY: 4,
   HEADLESS: true,
-  VIEWPORT: { width: 1280, height: 800 },
+  VIEWPORT: { width: 1366, height: 768 },
   DELAYS: {
-    AFTER_NAV: 1500,       // Reduced from 2000ms
-    SCROLL_STEP: 350,      // Reduced from 500ms
-    DETAIL_LOAD: 800,      // Reduced from 2000ms — we now use waitForSelector instead
-    BETWEEN_BATCH: 200,    // Reduced from 1000ms
+    AFTER_NAV: 2000,
+    SCROLL_STEP: 500,
+    DETAIL_LOAD: 3000,
+    BETWEEN_BATCH: 500,
   },
   SELECTORS: {
-    RESULTS_PANEL: 'div[role="feed"]',
+    // Try multiple possible card selectors (Google changes these often)
+    RESULT_CARDS_OPTIONS: ['.Nv2PK', '[data-result-index]', '.bfdHYd', 'div[role="feed"] > div > div > a'],
     RESULT_CARDS: '.Nv2PK',
-    CARD_LINK: '.Nv2PK a[href*="/maps/place"]',
-    CARD_NAME: '.Nv2PK .qBF1Pd',
-    CARD_RATING: '.Nv2PK .MW4etd',
-    CARD_ADDRESS: '.Nv2PK .W4Efsd:last-child .W4Efsd:last-child span:last-child',
+    RESULTS_PANEL: 'div[role="feed"]',
+    CARD_LINK: 'a[href*="/maps/place"]',
+    CARD_NAME: '.qBF1Pd',
+    CARD_RATING: '.MW4etd',
     DETAIL_ADDRESS: 'button[data-item-id="address"] .Io6YTe',
-    DETAIL_PHONE: 'button[data-tooltip="Copy phone number"] .Io6YTe',
+    // Google localises the tooltip ("Copy phone number" vs "Salin nomor telepon"),
+    // but the button id always carries the raw number — match on that instead.
+    DETAIL_PHONE: 'button[data-item-id^="phone:tel"] .Io6YTe, button[data-item-id^="phone:tel"], button[data-tooltip="Copy phone number"] .Io6YTe',
+    DETAIL_WEBSITE: 'a[data-item-id="authority"]',
     END_OF_LIST: 'span.HlvSq',
   },
-  // Resources to block for faster page loads
-  BLOCKED_RESOURCE_TYPES: ['image', 'media', 'font', 'stylesheet', 'svg+xml'],
+  BLOCKED_RESOURCE_TYPES: ['image', 'media', 'font'],
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -70,21 +85,191 @@ async function initBrowser() {
       '--disable-background-timer-throttling',
       '--disable-backgrounding-occluded-windows',
       '--disable-renderer-backgrounding',
-      '--lang=en-US,en',
+      '--lang=id-ID,id,en-US,en',
+      '--disable-web-security',
       `--window-size=${CONFIG.VIEWPORT.width},${CONFIG.VIEWPORT.height}`,
     ],
     ignoreDefaultArgs: ['--enable-automation'],
   });
 }
 
+async function saveDebugScreenshot(page: any, label: string) {
+  try {
+    const dir = path.join(process.cwd(), 'debug_screenshots');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${label}_${Date.now()}.png`);
+    await page.screenshot({ path: file, fullPage: false });
+    console.log(`[Scraper] 📸 Debug screenshot: ${file}`);
+  } catch { /* ignore */ }
+}
+
+// ─── Email extraction ──────────────────────────────────────────────────────
+const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+
+// Junk addresses we never want to save (assets, trackers, placeholders)
+const EMAIL_BLOCKLIST = [
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.css', '.js', '.woff', '.woff2', '.ico',
+  '@2x', 'example.com', 'domain.com', 'yourdomain', 'sentry', 'wixpress', 'w3.org',
+  'schema.org', 'googleapis', 'cloudflare', 'wordpress.com', 'noreply', 'no-reply',
+];
+
+function normalizeUrl(raw?: string | null): string | null {
+  let value = (raw || '').trim();
+  if (!value || value === 'N/A') return null;
+  if (!/^https?:\/\//i.test(value)) value = 'https://' + value.replace(/^\/+/, '');
+  try { return new URL(value).toString(); } catch { return null; }
+}
+
+/** Pick the best email out of an HTML document (mailto links win, site domain preferred). */
+function pickEmail(html: string, siteHost: string): string | null {
+  const candidates: string[] = [];
+
+  const mailto = html.match(/mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/gi);
+  if (mailto) candidates.push(...mailto.map((m) => m.replace(/^mailto:/i, '')));
+
+  const found = html.match(EMAIL_REGEX);
+  if (found) candidates.push(...found);
+
+  const cleaned = Array.from(
+    new Set(
+      candidates
+        .map((e) => e.toLowerCase().replace(/[.,;:)\]}]+$/, ''))
+        .filter((e) => {
+          const [local, domain] = e.split('@');
+          if (!local || !domain || !domain.includes('.') || domain.length < 4) return false;
+          return !EMAIL_BLOCKLIST.some((bad) => e.includes(bad));
+        })
+    )
+  );
+
+  if (cleaned.length === 0) return null;
+
+  const host = siteHost.replace(/^www\./, '');
+  const matched = cleaned.find((e) => {
+    const domain = e.split('@')[1].replace(/^www\./, '');
+    return domain === host || host.endsWith(`.${domain}`) || domain.endsWith(`.${host}`);
+  });
+
+  return matched || cleaned[0];
+}
+
+async function fetchHtml(url: string, timeout = 5000): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    const response = await fetch(url, {
+      signal: controller.signal,
+      redirect: 'follow',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+    });
+    clearTimeout(timer);
+    if (!response.ok) return null;
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType && !contentType.includes('html')) return null;
+    return await response.text();
+  } catch {
+    return null;
+  }
+}
+
+/** Grab the first usable email address from a business website. */
+async function fetchEmailFromWebsite(website: string): Promise<string | null> {
+  const base = normalizeUrl(website);
+  if (!base) return null;
+
+  let origin = '';
+  let host = '';
+  try {
+    const u = new URL(base);
+    origin = u.origin;
+    host = u.hostname;
+  } catch {
+    return null;
+  }
+
+  const home = await fetchHtml(base);
+  if (!home) return null;
+
+  const fromHome = pickEmail(home, host);
+  if (fromHome) return fromHome;
+
+  // Common contact pages — only tried when the homepage had nothing
+  for (const path of ['/contact', '/contact-us', '/kontak']) {
+    const html = await fetchHtml(`${origin}${path}`, 4000);
+    if (!html) continue;
+    const email = pickEmail(html, host);
+    if (email) return email;
+  }
+
+  return null;
+}
+
 async function navigateToSearch(page: any, query: string) {
-  // Enable resource blocking on main page too (no images/css needed)
   await setupPageInterception(page);
-  const url = `https://www.google.com/maps/search/${encodeURIComponent(query)}?hl=en`;
-  // 'domcontentloaded' is faster than 'networkidle0' and still reliable
+
+  const ua = getRandomUA();
+  await page.setUserAgent(ua);
+  await page.setExtraHTTPHeaders({
+    'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+  });
+
+  // Hide puppeteer automation signals
+  await page.evaluateOnNewDocument(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    (window as any).chrome = { runtime: {} };
+    Object.defineProperty(navigator, 'languages', { get: () => ['id-ID', 'id', 'en-US', 'en'] });
+    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+  });
+
+  const url = `https://www.google.com/maps/search/${encodeURIComponent(query)}?hl=id`;
+  console.log(`[Scraper] 🌐 Navigating to: ${url}`);
+  scrapeEmitter.emit('log', { type: 'info', msg: `Navigating to Google Maps...` });
+
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
   await sleep(CONFIG.DELAYS.AFTER_NAV);
-  await page.waitForSelector(CONFIG.SELECTORS.RESULTS_PANEL, { timeout: 20_000 });
+
+  // Handle Google consent page if present
+  const currentUrl = page.url();
+  if (currentUrl.includes('consent.google') || currentUrl.includes('accounts.google')) {
+    console.log('[Scraper] ⚠️  Google consent page detected — trying to accept...');
+    scrapeEmitter.emit('log', { type: 'info', msg: 'Handling Google consent page...' });
+    // Try clicking accept button
+    const acceptBtn = await page.$('button[aria-label*="Accept"], button[aria-label*="Setuju"], #L2AGLb, .tHlp8d');
+    if (acceptBtn) {
+      await acceptBtn.click();
+      await sleep(2000);
+      await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15_000 }).catch(() => {});
+    }
+  }
+
+  // Try to find result cards using multiple possible selectors
+  let foundSelector = '';
+  for (const sel of CONFIG.SELECTORS.RESULT_CARDS_OPTIONS) {
+    try {
+      await page.waitForSelector(sel, { timeout: 12_000 });
+      const count = await page.$$eval(sel, (els: Element[]) => els.length);
+      if (count > 0) {
+        foundSelector = sel;
+        console.log(`[Scraper] ✅ Found ${count} cards with selector: ${sel}`);
+        scrapeEmitter.emit('log', { type: 'info', msg: `Found result cards (${count}) on page.` });
+        break;
+      }
+    } catch { /* try next */ }
+  }
+
+  if (!foundSelector) {
+    await saveDebugScreenshot(page, 'no_cards_found');
+    const pageTitle = await page.title();
+    const bodySnippet = await page.$eval('body', (el: Element) => (el as HTMLElement).innerText.substring(0, 300)).catch(() => '');
+    throw new Error(`Could not find result cards. Page title: "${pageTitle}". Body: ${bodySnippet}`);
+  }
+
+  // Update CONFIG to use the working selector for this run
+  CONFIG.SELECTORS.RESULT_CARDS = foundSelector;
 }
 
 async function scrollUntilDone(page: any, limit: number) {
@@ -123,11 +308,20 @@ async function scrollUntilDone(page: any, limit: number) {
     }
     previous = count;
 
-    // Scroll the panel to load more results
-    await page.evaluate((panelSel: string) => {
-      const panel = document.querySelector(panelSel);
-      if (panel) panel.scrollTop += panel.clientHeight;
-    }, CONFIG.SELECTORS.RESULTS_PANEL);
+    // Scroll the panel to load more results by finding the scrollable parent of the cards
+    await page.evaluate((cardSel: string) => {
+      const card = document.querySelector(cardSel);
+      if (!card) return;
+      
+      let parent = card.parentElement;
+      while (parent && parent !== document.body) {
+        if (parent.scrollHeight > parent.clientHeight) {
+          parent.scrollTop += parent.clientHeight;
+          break;
+        }
+        parent = parent.parentElement;
+      }
+    }, CONFIG.SELECTORS.RESULT_CARDS);
 
     process.stdout.write(`\r[Scraper] 🔄 Cards loaded: ${count}/${limit} `);
     scrapeEmitter.emit('log', { type: 'progress', msg: `Cards loaded: ${count}/${limit}` });
@@ -155,7 +349,7 @@ async function extractFromCards(page: any, limit: number) {
       let finalAddress = 'N/A';
       const w4Elements = Array.from(card.querySelectorAll('.W4Efsd'));
       
-      for (const el of w4Elements) {
+      for (const el of w4Elements as Element[]) {
         // Skip parent containers
         if (el.querySelector('.W4Efsd')) continue;
         
@@ -182,6 +376,8 @@ async function extractFromCards(page: any, limit: number) {
         address: finalAddress,
         url: linkEl ? linkEl.href : null,
         phone: 'N/A',
+        website: 'N/A',
+        email: 'N/A',
       };
     });
   }, { cardSel: CONFIG.SELECTORS.RESULT_CARDS, limit });
@@ -219,10 +415,31 @@ async function fetchPhones(browser: any, records: any[]) {
           await tab.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
           await tab.goto(record.url, { waitUntil: 'domcontentloaded', timeout: 15_000 });
 
-          let phone = await tab
+          await tab
             .waitForSelector(CONFIG.SELECTORS.DETAIL_PHONE, { timeout: CONFIG.DELAYS.DETAIL_LOAD })
-            .then((el: any) => el.evaluate((e: any) => e.innerText.trim()))
-            .catch(() => 'N/A');
+            .catch(() => null);
+
+          // Prefer the raw number embedded in the button id (localisation-proof),
+          // then the visible text, then the legacy English-tooltip selector.
+          // Raw number can be '' when the place doesn't list one
+          let phone = await tab
+            .evaluate(() => {
+              const btn: HTMLElement | null = document.querySelector('button[data-item-id^="phone:tel"]');
+              const fromId = btn ? (btn.getAttribute('data-item-id') || '').replace(/^phone:tel:/, '') : '';
+              const fromText = btn ? (btn.innerText || '').trim() : '';
+              const legacy: HTMLElement | null = document.querySelector('button[data-tooltip="Copy phone number"] .Io6YTe');
+              const fromLegacy = legacy ? legacy.innerText.trim() : '';
+              return fromId || fromText || fromLegacy || '';
+            })
+            .catch(() => '');
+
+          if (!phone) phone = 'N/A';
+
+          const website = await tab.$eval(CONFIG.SELECTORS.DETAIL_WEBSITE, (el: any) => el.href).catch(() => 'N/A');
+          const detailAddr = await tab.$eval(CONFIG.SELECTORS.DETAIL_ADDRESS, (el: any) => el.innerText.trim()).catch(() => null);
+
+          if (website && website !== 'N/A') record.website = website;
+          if (detailAddr && detailAddr !== 'N/A') record.address = detailAddr;
 
           // Clean up phone format
           if (phone !== 'N/A') {
@@ -249,19 +466,24 @@ async function fetchPhones(browser: any, records: any[]) {
           }
 
           record.phone = phone;
-          completed++;
-
-          process.stdout.write(
-            `\r[Scraper] 📞 Progress: ${completed}/${recordsWithUrl.length} (${Math.round(completed / recordsWithUrl.length * 100)}%) — Last: ${record.name.substring(0, 30)}`
-          );
-          scrapeEmitter.emit('log', { type: 'phone', msg: `[${completed}/${recordsWithUrl.length}] ${record.name} → ${record.phone}` });
-
         } catch {
           record.phone = 'N/A';
-          completed++;
         } finally {
           if (tab) await tab.close().catch(() => {});
         }
+
+        // Fetch email from the business website (independent of the detail tab)
+        if ((!record.email || record.email === 'N/A') && record.website && record.website !== 'N/A') {
+          const email = await fetchEmailFromWebsite(record.website);
+          if (email) record.email = email;
+        }
+
+        completed++;
+
+        process.stdout.write(
+          `\r[Scraper] 📞 Progress: ${completed}/${recordsWithUrl.length} (${Math.round(completed / recordsWithUrl.length * 100)}%) — Last: ${record.name.substring(0, 30)}`
+        );
+        scrapeEmitter.emit('log', { type: 'phone', msg: `[${completed}/${recordsWithUrl.length}] ${record.name} → ☎ ${record.phone} | ✉ ${record.email}` });
       })
     );
 
@@ -305,22 +527,31 @@ export const scrapeMaps = async (query: string, limit: number = CONFIG.MAX_RESUL
     
     await fetchPhones(browser, records);
 
-    const validRecords = records.filter((r: any) => r.phone && r.phone !== 'N/A');
+    // Scrape = collect EVERYTHING. No filtering here — leads get qualified later in the CRM.
+    const allRecords = records;
+    const withPhone = allRecords.filter((r: any) => r.phone && r.phone !== 'N/A').length;
+    const withEmail = allRecords.filter((r: any) => r.email && r.email !== 'N/A').length;
+    const withWebsite = allRecords.filter((r: any) => r.website && r.website !== 'N/A').length;
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    
-    console.log(`[Scraper] ✅ Complete! ${validRecords.length}/${total} contacts had phone numbers. (${elapsed}s)`);
-    console.log(`[Scraper] 💾 Saving ${validRecords.length} contacts to database...`);
-    scrapeEmitter.emit('log', { type: 'info', msg: `Extraction done: ${validRecords.length}/${total} have phone numbers. Saving...` });
+
+    console.log(`[Scraper] ✅ Complete! ${allRecords.length} contacts collected — ${withPhone} phone / ${withEmail} email / ${withWebsite} website. (${elapsed}s)`);
+    console.log(`[Scraper] 💾 Saving all ${allRecords.length} contacts to database...`);
+    scrapeEmitter.emit('log', { type: 'info', msg: `Extraction done: ${allRecords.length} contacts — ${withPhone} phone / ${withEmail} email / ${withWebsite} website. Saving all of them...` });
+
+    const empty = (v: any) => !v || v === 'N/A' ? null : v;
 
     const batch = await prisma.scrapeBatch.create({
       data: {
         query,
         contacts: {
-          create: validRecords.map((r: any) => ({
+          create: allRecords.map((r: any) => ({
             name: r.name,
-            phone: r.phone,
-            address: r.address,
-            rating: r.rating
+            phone: r.phone, // kept as-is ('N/A' when the place has no number)
+            address: empty(r.address),
+            rating: empty(r.rating),
+            website: empty(r.website),
+            email: empty(r.email),
+            mapsUrl: empty(r.url)
           }))
         }
       },

@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model WhatsAppAuth {
@@ -53,13 +54,19 @@ model ScrapeBatch {
 }
 
 model ScrapedContact {
-  id      String      @id @default(uuid())
-  batchId String
-  name    String
-  phone   String
-  address String?
-  rating  String?
-  batch   ScrapeBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  id            String      @id @default(uuid())
+  batchId       String
+  name          String
+  phone         String
+  address       String?
+  rating        String?
+  website       String?
+  email         String?
+  mapsUrl       String?
+  contactStatus String      @default("unsent")
+  contactedAt   DateTime?
+  emailSentAt   DateTime?
+  batch         ScrapeBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
 
   @@index([batchId])
 }

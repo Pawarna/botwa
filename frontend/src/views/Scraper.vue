@@ -127,10 +127,13 @@
               {{ selectedBatch ? selectedBatch.query : 'Select a batch' }}
             </span>
             <span v-if="selectedBatch" class="contact-chip">{{ batchContacts.length }} contacts</span>
+            <span v-if="selectedBatch" class="coverage-chip" title="Data completeness of this batch">
+              {{ phoneCount }} phone · {{ emailCount }} email · {{ websiteCount }} web
+            </span>
           </div>
           <router-link v-if="selectedBatch" to="/blaster" class="btn-secondary-solid">
             <SendIcon :size="14" />
-            Blast this
+            Open in CRM
           </router-link>
         </div>
 
@@ -152,6 +155,8 @@
                 <th>Name</th>
                 <th>Phone</th>
                 <th>Address</th>
+                <th>Website</th>
+                <th>Email</th>
                 <th>Rating</th>
                 <th>Actions</th>
               </tr>
@@ -159,9 +164,45 @@
             <tbody>
               <tr v-for="(contact, idx) in batchContacts" :key="contact.id || idx">
                 <td class="text-muted" style="width:40px;">{{ idx + 1 }}</td>
-                <td class="contact-name">{{ contact.name }}</td>
-                <td class="contact-phone">{{ contact.phone }}</td>
-                <td class="contact-address" :title="contact.address">{{ contact.address }}</td>
+                <td class="contact-name">
+                  <a
+                    v-if="contact.mapsUrl"
+                    :href="contact.mapsUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="maps-link"
+                    title="Open in Google Maps"
+                  >{{ contact.name }}</a>
+                  <template v-else>{{ contact.name }}</template>
+                </td>
+                <td class="contact-phone" :class="{ 'is-empty': !hasVal(contact.phone) }">{{ display(contact.phone) }}</td>
+                <td class="contact-address" :class="{ 'is-empty': !hasVal(contact.address) }" :title="contact.address">{{ display(contact.address) }}</td>
+                <td>
+                  <a
+                    v-if="contact.website && contact.website !== 'N/A'"
+                    :href="contact.website"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="website-link"
+                    :title="contact.website"
+                  >
+                    <GlobeIcon :size="13" />
+                    <span class="website-domain">{{ extractDomain(contact.website) }}</span>
+                  </a>
+                  <span class="text-muted" v-else>—</span>
+                </td>
+                <td>
+                  <a
+                    v-if="contact.email && contact.email !== 'N/A'"
+                    :href="`mailto:${contact.email}`"
+                    class="email-link"
+                    :title="contact.email"
+                  >
+                    <MailIcon :size="13" />
+                    <span class="email-text">{{ contact.email }}</span>
+                  </a>
+                  <span class="text-muted" v-else>—</span>
+                </td>
                 <td>
                   <span class="rating-badge" v-if="contact.rating && contact.rating !== 'N/A'">
                     <StarIcon :size="11" />{{ contact.rating }}
@@ -184,13 +225,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onUnmounted } from 'vue';
+import { ref, computed, nextTick, onUnmounted } from 'vue';
 import { fetchApi } from '../services/api';
 import { useToast, useConfirm } from '../composables/useNotification';
 import {
   SearchIcon, MapPinIcon, LoaderIcon, TerminalIcon,
   DatabaseIcon, UsersIcon, RefreshCwIcon, SendIcon,
-  MousePointerClickIcon, StarIcon, Trash2Icon
+  MousePointerClickIcon, StarIcon, Trash2Icon, GlobeIcon, MailIcon
 } from '@lucide/vue';
 
 const toast = useToast();
@@ -223,6 +264,23 @@ const logPrefix = (type: string) => {
 
 const formatDate = (d: string) =>
   new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+const extractDomain = (url: string) => {
+  try {
+    const u = new URL(url);
+    return u.hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+};
+
+// ─── Cell display helpers (everything is saved, empty values just show "—" ) ──
+const hasVal = (v: any) => !!(v && v !== 'N/A');
+const display = (v: any) => (hasVal(v) ? v : '—');
+
+const phoneCount = computed(() => batchContacts.value.filter((c: any) => hasVal(c.phone)).length);
+const emailCount = computed(() => batchContacts.value.filter((c: any) => hasVal(c.email)).length);
+const websiteCount = computed(() => batchContacts.value.filter((c: any) => hasVal(c.website)).length);
 
 const appendLog = async (data: { type: string; msg: string }) => {
   const now = new Date().toLocaleTimeString('en-US', { hour12: false });
@@ -469,6 +527,14 @@ loadBatches();
   padding: 2px 8px; border-radius: 20px;
 }
 .batch-item.active .contact-chip { background: #FF5C35; }
+.coverage-chip {
+  font-size: 11px;
+  color: #888;
+  background: #F5F5F5;
+  border: 1px solid #EBEBEB;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
 
 .delete-batch-btn {
   background: transparent;
@@ -546,13 +612,76 @@ loadBatches();
 .data-table tr:hover td { background: #FAFAFA; }
 .contact-name { font-weight: 500; color: #111; }
 .contact-phone { font-family: monospace; color: #444; }
+.maps-link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dashed #ccc;
+}
+.maps-link:hover { color: #FF5C35; border-bottom-color: #FF5C35; }
+.is-empty { color: #c4c4c4; }
 .contact-address {
-  max-width: 200px;
+  max-width: 180px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   color: #666;
 }
+
+.website-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #3B82F6;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #EFF6FF;
+  border: 1px solid #BFDBFE;
+  transition: all 0.15s;
+  max-width: 130px;
+  overflow: hidden;
+}
+.website-link:hover {
+  background: #DBEAFE;
+  color: #1D4ED8;
+}
+.website-domain {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100px;
+  display: inline-block;
+}
+.email-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #059669;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #ECFDF5;
+  border: 1px solid #A7F3D0;
+  transition: all 0.15s;
+  max-width: 170px;
+  overflow: hidden;
+}
+.email-link:hover {
+  background: #D1FAE5;
+  color: #047857;
+}
+.email-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+  display: inline-block;
+}
+
 .rating-badge {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: 12px; font-weight: 500;
