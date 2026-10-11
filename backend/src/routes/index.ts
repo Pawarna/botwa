@@ -4,6 +4,7 @@ import { checkSession, startSession, stopSession, listSessions } from '../contro
 import { addReplyRule, listReplyRules, removeReplyRule } from '../controllers/autoReplyController';
 import { getBroadcastStats, queueBroadcast, getBroadcastJobs, deleteBroadcastJob, clearBroadcastQueue } from '../controllers/broadcastController';
 import { startScraping, getScrapeBatches, getBatchContacts, deleteScrapeBatch, deleteScrapedContact, updateScrapedContactStatus } from '../controllers/scraperController';
+import { getTemplates, addTemplates, editTemplate, removeTemplate } from '../controllers/templateController';
 import { scrapeEmitter } from '../services/scraperService';
 import { uploadMedia } from '../controllers/uploadController';
 import multer from 'multer';
@@ -60,5 +61,11 @@ router.get('/broadcast/stats', getBroadcastStats);
 router.get('/broadcast/:sessionId/jobs', getBroadcastJobs);
 router.delete('/broadcast/jobs/:id', deleteBroadcastJob);
 router.delete('/broadcast/:sessionId/clear', clearBroadcastQueue);
+
+// Message Templates (variasi gacha)
+router.get('/templates', getTemplates);
+router.post('/templates', addTemplates);
+router.patch('/templates/:id', editTemplate);
+router.delete('/templates/:id', removeTemplate);
 
 export default router;

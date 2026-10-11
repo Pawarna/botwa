@@ -1,13 +1,15 @@
 import prisma from '../utils/prisma';
 type BlastStatusType = 'PENDING' | 'PROCESSING' | 'SENT' | 'FAILED';
 
-export const addBlastJobs = async (sessionId: string, jobs: { targetJid: string, messageText: string, mediaUrl?: string, mediaType?: string }[]) => {
+export const addBlastJobs = async (sessionId: string, jobs: { targetJid: string, messageText: string, messageVariants?: string[], mediaUrl?: string, mediaType?: string, contactId?: string }[]) => {
     const data = jobs.map(job => ({
         sessionId,
         targetJid: job.targetJid,
         messageText: job.messageText,
+        messageVariants: job.messageVariants && job.messageVariants.length ? JSON.stringify(job.messageVariants) : null,
         mediaUrl: job.mediaUrl,
         mediaType: job.mediaType,
+        contactId: job.contactId,
         status: 'PENDING' as const
     }));
 
@@ -16,8 +18,16 @@ export const addBlastJobs = async (sessionId: string, jobs: { targetJid: string,
     });
 };
 
+export const getNextPendingJobBySession = async (sessionId: string) => {
+    // Find the oldest pending job for a specific session
+    return prisma.blastQueue.findFirst({
+        where: { status: 'PENDING', sessionId },
+        orderBy: { createdAt: 'asc' }
+    });
+};
+
 export const getNextPendingJob = async () => {
-    // Find the oldest pending job
+    // Find the oldest pending job (across all sessions)
     return prisma.blastQueue.findFirst({
         where: { status: 'PENDING' },
         orderBy: { createdAt: 'asc' }

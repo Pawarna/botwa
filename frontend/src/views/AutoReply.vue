@@ -39,6 +39,29 @@
             Save Rule
           </button>
         </form>
+
+        <!-- Template Rules siap pakai -->
+        <div class="tpl-section">
+          <div class="section-label">
+            <ZapIcon :size="14" />
+            Template Rules
+          </div>
+          <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">
+            Klik + untuk menambahkan rule siap pakai.
+          </p>
+          <div class="tpl-list">
+            <div class="tpl-item" v-for="t in templates" :key="t.keyword">
+              <div class="tpl-info">
+                <span class="tpl-keyword mono">{{ t.keyword }}</span>
+                <span class="tpl-reply" :title="t.replyText">{{ t.replyText }}</span>
+              </div>
+              <button class="tpl-add-btn" @click="addTemplate(t)" :disabled="addingTemplate === t.keyword" title="Tambah rule ini">
+                <LoaderIcon :size="12" class="spin" v-if="addingTemplate === t.keyword" />
+                <PlusIcon :size="12" v-else />
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Current Rules Card -->
@@ -47,6 +70,7 @@
           <div class="d-flex align-center gap-2">
             <MessageSquareIcon :size="16" />
             <span class="card-title">Rules List</span>
+            <span class="rules-count" v-if="rules.length">{{ rules.length }}</span>
           </div>
           <div class="d-flex gap-2">
 
@@ -102,7 +126,7 @@
 import { ref, onMounted } from 'vue';
 import { fetchApi } from '../services/api';
 import { useToast, useConfirm } from '../composables/useNotification';
-import { PlusIcon, MessageSquareIcon, RefreshCwIcon, Trash2Icon } from '@lucide/vue';
+import { PlusIcon, MessageSquareIcon, RefreshCwIcon, Trash2Icon, ZapIcon, LoaderIcon } from '@lucide/vue';
 
 const toast = useToast();
 const confirm = useConfirm();
@@ -126,6 +150,36 @@ const form = ref({
   replyText: ''
 });
 
+// ─── Template rules siap pakai ───────────────────────────────────────────────
+const templates = [
+  { keyword: 'halo', isExact: false, replyText: 'Halo! 👋 Terima kasih sudah menghubungi Concern. Ada yang bisa kami bantu terkait pembuatan website / aplikasi?' },
+  { keyword: 'harga', isExact: false, replyText: 'Untuk info harga, kami sesuaikan dengan kebutuhan project. Boleh diinfokan fitur yang diinginkan? Nanti kami buatkan penawarannya. 😊' },
+  { keyword: 'lokasi', isExact: false, replyText: 'Kami bekerja secara remote — konsultasi bisa full online via WhatsApp / Zoom. 😊' },
+  { keyword: 'jam', isExact: false, replyText: 'Jam operasional kami: Senin–Jumat 09.00–17.00 WIB. Pesan di luar jam tersebut tetap akan kami balas secepatnya.' },
+  { keyword: 'terima kasih', isExact: false, replyText: 'Sama-sama! 🙏 Jangan ragu menghubungi kami kembali jika ada yang bisa dibantu.' },
+];
+const addingTemplate = ref('');
+
+const addTemplate = async (t: { keyword: string; replyText: string; isExact: boolean }) => {
+  if (rules.value.some(r => r.keyword.toLowerCase() === t.keyword.toLowerCase())) {
+    toast.info(`Rule "${t.keyword}" sudah ada.`);
+    return;
+  }
+  addingTemplate.value = t.keyword;
+  try {
+    await fetchApi('/autoreply', {
+      method: 'POST',
+      body: JSON.stringify({ keyword: t.keyword, replyText: t.replyText, isExact: t.isExact })
+    });
+    toast.success(`Rule "${t.keyword}" ditambahkan.`);
+    await fetchRules();
+  } catch (error: any) {
+    toast.error(error.message);
+  } finally {
+    addingTemplate.value = '';
+  }
+};
+
 const fetchRules = async () => {
   try {
     const data = await fetchApi(`/autoreply/default`); // backend ignores the param anyway
@@ -144,10 +198,7 @@ const addRule = async () => {
     toast.success('Auto reply rule saved successfully.');
     form.value.keyword = '';
     form.value.replyText = '';
-    
-    if (true) {
-      fetchRules();
-    }
+    fetchRules();
   } catch (error: any) {
     toast.error(error.message);
   }
@@ -258,4 +309,34 @@ onMounted(() => {
 .align-center { align-items: center; }
 .justify-between { justify-content: space-between; }
 .gap-2 { gap: 8px; }
+
+/* Template rules */
+.tpl-section { margin-top: 20px; border-top: 1px solid #F0F0F0; padding-top: 16px; }
+.tpl-list { display: flex; flex-direction: column; gap: 8px; }
+.tpl-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border: 1px solid #F0F0F0; border-radius: 8px;
+  transition: border-color 0.15s;
+}
+.tpl-item:hover { border-color: #DDD; }
+.tpl-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tpl-keyword { font-size: 12px; font-weight: 700; color: #111; }
+.tpl-reply { font-size: 11px; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tpl-add-btn {
+  width: 26px; height: 26px; border-radius: 7px;
+  border: 1px solid #E0E0E0; background: #fff; color: #666;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: all 0.15s;
+}
+.tpl-add-btn:hover:not(:disabled) { background: #111; color: #fff; border-color: #111; }
+.tpl-add-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.rules-count {
+  background: #F0F0F0; color: #666;
+  font-size: 10px; font-weight: 700;
+  min-width: 17px; height: 17px; padding: 0 5px;
+  border-radius: 9px; display: inline-flex; align-items: center; justify-content: center;
+}
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>

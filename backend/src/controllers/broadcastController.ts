@@ -13,8 +13,8 @@ export const queueBroadcast = async (req: Request, res: Response) => {
 
         await addBlastJobs(sessionId, jobs);
         
-        // Trigger worker if it's sleeping
-        triggerWorker();
+        // Trigger worker if it's sleeping (will skip if WA not connected, jobs stay PENDING)
+        triggerWorker(sessionId);
 
         return res.status(201).json({ message: 'Broadcast jobs queued successfully' });
     } catch (error: any) {

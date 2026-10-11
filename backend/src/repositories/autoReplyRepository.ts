@@ -1,29 +1,27 @@
 import prisma from '../utils/prisma';
 
 export const findMatchedReply = async (sessionId: string, message: string) => {
-    // We fetch all replies for the session to match in memory,
-    // or we can try to query directly using Prisma.
-    // Given the `isExact` and `contains` logic, fetching all might be inefficient for large datasets,
-    // but Prisma doesn't have a direct "contains" query where the DB column is the substring of the input.
-    // Usually it's the other way around. 
-    // We will fetch all keywords for the session and check in memory.
-    
+    // Prisma tidak punya query "contains" di mana kolom DB adalah substring dari input,
+    // jadi semua rule session di-fetch lalu dicocokkan di memory.
     const rules = await prisma.autoReply.findMany({
         where: { sessionId }
     });
 
-    const lowerMessage = message.toLowerCase();
+    // Normalisasi: lowercase + trim + rapatkan spasi, supaya "Halo " tetap cocok dengan "halo"
+    const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+    const msgNorm = norm(message);
 
+    // Prioritas 1: exact match
     for (const rule of rules) {
-        const lowerKeyword = rule.keyword.toLowerCase();
-        if (rule.isExact) {
-            if (lowerMessage === lowerKeyword) {
-                return rule.replyText;
-            }
-        } else {
-            if (lowerMessage.includes(lowerKeyword)) {
-                return rule.replyText;
-            }
+        if (rule.isExact && msgNorm === norm(rule.keyword)) {
+            return rule.replyText;
+        }
+    }
+
+    // Prioritas 2: contains
+    for (const rule of rules) {
+        if (!rule.isExact && msgNorm.includes(norm(rule.keyword))) {
+            return rule.replyText;
         }
     }
 

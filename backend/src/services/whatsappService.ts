@@ -2,6 +2,7 @@ import makeWASocket, { DisconnectReason, WASocket, fetchLatestBaileysVersion } f
 import { Boom } from '@hapi/boom';
 import { usePrismaAuthState, deleteSessionData } from '../repositories/authRepository';
 import { findMatchedReply } from '../repositories/autoReplyRepository';
+import { triggerWorker } from './broadcastWorker';
 
 export type SessionStatusType = 'connecting' | 'qr' | 'connected' | 'error' | 'offline';
 
@@ -10,6 +11,10 @@ export const sessions = new Map<string, WASocket>();
 export const qrCodes = new Map<string, string>(); // Store base64 QR codes
 export const sessionStatuses = new Map<string, SessionStatusType>(); // Explicit status tracking
 export const sessionErrors = new Map<string, string>(); // Store connection error messages
+
+// Cooldown auto-reply per chat: mencegah spam balasan beruntun
+const autoReplyCooldowns = new Map<string, number>();
+const AUTO_REPLY_COOLDOWN_MS = 10_000;
 
 export const createSession = async (sessionId: string) => {
     if (sessions.has(sessionId)) {
@@ -89,23 +94,48 @@ export const createSession = async (sessionId: string) => {
             qrCodes.delete(sessionId);
             sessionErrors.delete(sessionId);
             sessionStatuses.set(sessionId, 'connected');
+            // Trigger broadcast worker untuk proses job PENDING yang tertunda
+            triggerWorker(sessionId);
         }
     });
 
     sock.ev.on('messages.upsert', async (m) => {
         if (m.type !== 'notify') return;
-        
+
         for (const msg of m.messages) {
             if (!msg.message || msg.key.fromMe) continue;
 
-            const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+            const jid = msg.key.remoteJid!;
+            // Auto-reply hanya untuk chat personal — skip status, channel, dan grup
+            if (jid === 'status@broadcast' || jid.endsWith('@newsletter') || jid.endsWith('@g.us')) continue;
+
+            // Unwrap tipe pesan bersarang (ephemeral / viewOnce / documentWithCaption)
+            let inner: any = msg.message;
+            if (inner.ephemeralMessage) inner = inner.ephemeralMessage.message;
+            if (inner.viewOnceMessage) inner = inner.viewOnceMessage.message;
+            if (inner.viewOnceMessageV2) inner = inner.viewOnceMessageV2.message;
+            if (inner.documentWithCaptionMessage) inner = inner.documentWithCaptionMessage.message;
+
+            const text: string | undefined =
+                inner.conversation ||
+                inner.extendedTextMessage?.text ||
+                inner.imageMessage?.caption ||
+                inner.videoMessage?.caption;
             if (!text) continue;
+
+            // Cooldown per chat — tidak membalas lebih dari sekali per 10 detik
+            const cooldownKey = `${sessionId}:${jid}`;
+            const lastReplyAt = autoReplyCooldowns.get(cooldownKey) || 0;
+            if (Date.now() - lastReplyAt < AUTO_REPLY_COOLDOWN_MS) continue;
 
             const replyText = await findMatchedReply(sessionId, text);
             if (replyText) {
                 try {
-                    await sock.sendMessage(msg.key.remoteJid!, { text: replyText });
+                    autoReplyCooldowns.set(cooldownKey, Date.now());
+                    await sock.sendMessage(jid, { text: replyText });
+                    console.log(`Auto-reply sent to ${jid} (matched incoming: "${text.slice(0, 40)}")`);
                 } catch (error) {
+                    autoReplyCooldowns.delete(cooldownKey);
                     console.error('Failed to send auto-reply:', error);
                 }
             }
