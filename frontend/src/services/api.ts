@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
 export const getHeaders = () => {
   const token = localStorage.getItem('adminToken');
@@ -18,7 +18,7 @@ export const fetchApi = async (endpoint: string, options: RequestInit = {}) => {
   });
 
   const data = await response.json();
-  
+
   if (!response.ok) {
     if (response.status === 401) {
       localStorage.removeItem('adminToken');
