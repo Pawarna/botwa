@@ -5,6 +5,8 @@ import Session from './views/Session.vue';
 import AutoReply from './views/AutoReply.vue';
 import Blaster from './views/Blaster.vue';
 import Scraper from './views/Scraper.vue';
+import Projects from './views/Projects.vue';
+import ProjectDetail from './views/ProjectDetail.vue';
 
 const routes: Array<RouteRecordRaw> = [
   { path: '/login', component: Login, name: 'Login' },
@@ -14,10 +16,12 @@ const routes: Array<RouteRecordRaw> = [
     meta: { requiresAuth: true },
     children: [
       { path: '', redirect: '/session' },
-      { path: 'session', component: Session, name: 'Session' },
-      { path: 'auto-reply', component: AutoReply, name: 'AutoReply' },
-      { path: 'blaster', component: Blaster, name: 'Blaster' },
-      { path: 'scraper', component: Scraper, name: 'Scraper' },
+      { path: 'session',    component: Session,    name: 'Session',    meta: { requiresAuth: true } },
+      { path: 'auto-reply', component: AutoReply,  name: 'AutoReply',  meta: { requiresAuth: true } },
+      { path: 'scraper',    component: Scraper,    name: 'Scraper',    meta: { requiresAuth: true } },
+      { path: 'blaster',    component: Blaster,    name: 'Blaster',    meta: { requiresAuth: true } },
+      { path: 'projects',   component: Projects,   name: 'Projects',   meta: { requiresAuth: true } },
+      { path: 'projects/:id', component: ProjectDetail, name: 'ProjectDetail', meta: { requiresAuth: true } },
     ]
   }
 ];
@@ -33,7 +37,7 @@ router.beforeEach((to, _from, next) => {
   if (to.meta.requiresAuth && !isAuthenticated) {
     next('/login');
   } else if (to.path === '/login' && isAuthenticated) {
-    next('/');
+    next('/session');
   } else {
     next();
   }

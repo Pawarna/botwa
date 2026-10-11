@@ -13,8 +13,8 @@
       
       <!-- Logo area -->
       <router-link to="/" class="logo-container" @click="isMobileOpen = false">
-        <div class="logo-icon">W</div>
-        <span class="logo-text">WaBot Pro</span>
+        <div class="logo-icon">C</div>
+        <span class="logo-text">Concern Ecosystem</span>
       </router-link>
       
       <!-- Nav menu -->
@@ -34,9 +34,14 @@
           <span class="nav-text">Scraper</span>
         </router-link>
         
-        <router-link to="/blaster" class="nav-item" active-class="active" title="Advanced Blaster" @click="isMobileOpen = false">
+        <router-link to="/blaster" class="nav-item" active-class="active" title="CRM" @click="isMobileOpen = false">
           <SendIcon :size="20" />
-          <span class="nav-text">Blaster</span>
+          <span class="nav-text">CRM</span>
+        </router-link>
+
+        <router-link to="/projects" class="nav-item" active-class="active" title="Project Management" @click="isMobileOpen = false">
+          <KanbanIcon :size="20" />
+          <span class="nav-text">Projects</span>
         </router-link>
       </nav>
       
@@ -127,6 +132,7 @@ import {
   MessageSquareIcon,
   SearchIcon,
   SendIcon,
+  KanbanIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   LogOutIcon,
@@ -165,8 +171,9 @@ const pageTitle = computed(() => {
   if (name === 'Session') return 'Session Manager';
   if (name === 'AutoReply') return 'Auto Reply Rules';
   if (name === 'Scraper') return 'Maps Scraper';
-  if (name === 'Blaster') return 'Message Blaster';
-  return 'Dashboard';
+  if (name === 'Blaster') return 'CRM & Broadcast';
+  if (name === 'Projects') return 'Project Management';
+  return 'Concern Ecosystem';
 });
 
 const pageSubtitle = computed(() => {
@@ -174,7 +181,8 @@ const pageSubtitle = computed(() => {
   if (name === 'Session') return 'Configure and authenticate WhatsApp instances';
   if (name === 'AutoReply') return 'Configure automated responses for incoming WhatsApp messages';
   if (name === 'Scraper') return 'Extract business contacts from Google Maps';
-  if (name === 'Blaster') return 'Send personalized WhatsApp messages at scale';
+  if (name === 'Blaster') return 'Manage contact database and send targeted broadcasts';
+  if (name === 'Projects') return 'Track leads and manage project progress — Concern Ecosystem';
   return 'Manage your scraping and broadcast operations';
 });
 

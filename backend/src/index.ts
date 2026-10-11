@@ -1,16 +1,16 @@
 import 'dotenv/config';
 import app from './app';
 import { triggerWorker } from './services/broadcastWorker';
+import { triggerEmailWorker } from './services/emailWorker';
 
 import { getAllSessionIds } from './repositories/authRepository';
 import { createSession } from './services/whatsappService';
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, async () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`Server is running on port ${PORT}`);
     
-    // Auto restore existing sessions
     try {
         const sessionIds = await getAllSessionIds();
         console.log(`Found ${sessionIds.length} saved sessions, restoring...`);
@@ -22,4 +22,7 @@ app.listen(PORT, async () => {
     } catch (error) {
         console.error('Failed to restore sessions:', error);
     }
+
+    // Start the email worker on boot to resume any PENDING jobs
+    triggerEmailWorker();
 });

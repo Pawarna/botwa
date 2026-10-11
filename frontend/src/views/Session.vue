@@ -8,21 +8,63 @@
     </div>
 
     <div class="split-layout">
-      <!-- Add New Session Card -->
-      <div class="card compose-panel">
-        <div class="section-label">
-          <PlusIcon :size="14" />
-          Create Session
+      <div class="compose-panel">
+        <!-- Add New Session Card -->
+        <div class="card">
+          <div class="section-label">
+            <PlusIcon :size="14" />
+            Create Session
+          </div>
+          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
+            Add a new WhatsApp instance. You will scan a QR code to link your phone.
+          </p>
+          <div style="margin-top: 16px;">
+            <button type="button" @click="startSession" class="btn-primary-solid" style="width: 100%; justify-content: center;" :disabled="loading || (savedSessions.length > 0 && !['offline', 'error'].includes(savedSessions[0].status))">
+              <LoaderIcon :size="14" class="spin" v-if="loading" />
+              <PlusIcon :size="14" v-else />
+              {{ loading ? 'Starting...' : ((savedSessions.length > 0 && !['offline', 'error'].includes(savedSessions[0].status)) ? 'Session Active' : 'Connect WhatsApp') }}
+            </button>
+          </div>
         </div>
-        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
-          Add a new WhatsApp instance. You will scan a QR code to link your phone.
-        </p>
-        <div style="margin-top: 16px;">
-          <button type="button" @click="startSession" class="btn-primary-solid" style="width: 100%; justify-content: center;" :disabled="loading || (savedSessions.length > 0 && !['offline', 'error'].includes(savedSessions[0].status))">
-            <LoaderIcon :size="14" class="spin" v-if="loading" />
-            <PlusIcon :size="14" v-else />
-            {{ loading ? 'Starting...' : ((savedSessions.length > 0 && !['offline', 'error'].includes(savedSessions[0].status)) ? 'Session Active' : 'Connect WhatsApp') }}
-          </button>
+
+        <!-- Email (SMTP) Status Card -->
+        <div class="card">
+          <div class="card-header" style="margin-bottom: 12px;">
+            <div class="section-label" style="margin-bottom: 0;">
+              <MailIcon :size="14" />
+              Email (Cold Outreach)
+            </div>
+            <button class="btn-icon" @click="fetchEmailStatus(true)" title="Cek ulang konfigurasi SMTP">
+              <RefreshCwIcon :size="13" />
+            </button>
+          </div>
+
+          <div v-if="emailStatus === null" class="email-row text-muted" style="font-size: 12px;">
+            <LoaderIcon :size="13" class="spin" /> Memeriksa konfigurasi SMTP...
+          </div>
+
+          <template v-else-if="emailStatus.configured">
+            <div class="email-row">
+              <span class="status-badge" :class="emailStatus.verified ? 'status-sent' : 'status-pending'">
+                {{ emailStatus.verified ? 'Aktif ✓' : 'Terisi, tapi gagal verifikasi' }}
+              </span>
+            </div>
+            <div class="email-meta">
+              <div>{{ emailStatus.host }}:{{ emailStatus.port }}</div>
+              <div class="mono">{{ emailStatus.user }}</div>
+              <div class="mono text-muted">{{ emailStatus.from }}</div>
+              <p v-if="!emailStatus.verified" class="text-muted" style="font-size: 11px; margin: 4px 0 0;">
+                Cek SMTP_USER / SMTP_PASS di <span class="mono">backend/.env</span>, lalu restart backend.
+              </p>
+            </div>
+          </template>
+
+          <div v-else>
+            <span class="status-badge status-failed">Belum Aktif</span>
+            <p class="text-muted" style="font-size: 11px; margin: 8px 0 0; line-height: 1.5;">
+              Isi <span class="mono">SMTP_HOST</span>, <span class="mono">SMTP_USER</span>, <span class="mono">SMTP_PASS</span> di <span class="mono">backend/.env</span>, lalu restart backend.
+            </p>
+          </div>
         </div>
       </div>
 
@@ -127,7 +169,7 @@ import { fetchApi } from '../services/api';
 import { useToast, useConfirm } from '../composables/useNotification';
 import {
   SmartphoneIcon, PlusIcon, RefreshCwIcon, QrCodeIcon,
-  LinkIcon, Trash2Icon, LoaderIcon, XIcon
+  LinkIcon, Trash2Icon, LoaderIcon, XIcon, MailIcon
 } from '@lucide/vue';
 
 const toast = useToast();
@@ -139,6 +181,18 @@ let pollInterval: number | null = null;
 
 const activeQr = ref('');
 const activeQrSession = ref('');
+
+// ─── Email (SMTP) Status ────────────────────────────────────────────────────
+const emailStatus = ref<any>(null);
+
+const fetchEmailStatus = async (showSpinner = false) => {
+  if (showSpinner) emailStatus.value = null;
+  try {
+    emailStatus.value = await fetchApi('/email-blast/config');
+  } catch {
+    emailStatus.value = { configured: false, verified: false };
+  }
+};
 
 const fetchSessions = async () => {
   try {
@@ -240,6 +294,7 @@ const closeQr = () => {
 
 onMounted(() => {
   fetchSessions();
+  fetchEmailStatus();
   pollInterval = window.setInterval(fetchSessions, 3000);
 });
 
@@ -254,8 +309,16 @@ onUnmounted(() => {
 .page-subtitle { font-size: 13px; color: #888; }
 
 /* Layout */
-.compose-panel { width: 340px; flex-shrink: 0; }
+.compose-panel { width: 340px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; }
 .monitor-panel { flex: 1; }
+
+/* Email status card */
+.email-row { display: flex; align-items: center; gap: 8px; }
+.email-meta {
+  display: flex; flex-direction: column; gap: 3px;
+  margin-top: 9px; font-size: 11px; color: #555;
+}
+.email-meta .mono { font-size: 11px; }
 
 @media (max-width: 992px) {
   .compose-panel {
